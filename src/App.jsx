@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { calculateBazi } from './lib/bazi';
 import { calculateAstrology, SIGNS, SIGN_ELEMENT } from './lib/astrology';
 import { calculateNumerology } from './lib/numerology';
@@ -283,33 +283,25 @@ const SHICHEN = [
   { name: '亥', range: '21:00 - 23:00', start: 21, hour: 22, desc: '人定' },
 ];
 
-// 日期选择器：年月日三栏滚动
-const DatePicker = ({ year, month, day, onChange }) => {
-  const thisYear = new Date().getFullYear();
-  const years = [];
-  for (let y = thisYear; y >= 1920; y--) years.push(y);
-  const months = Array.from({ length: 12 }, (_, i) => i + 1);
-  const daysInMonth = (y, m) => new Date(y, m, 0).getDate();
-  const days = year && month
-    ? Array.from({ length: daysInMonth(year, month) }, (_, i) => i + 1)
-    : Array.from({ length: 31 }, (_, i) => i + 1);
-
-  const Col = ({ items, value, onPick, render, suffix }) => (
-    <div style={{
+// 滚动列（提到外面避免重新挂载导致闪烁）
+const ScrollCol = ({ items, value, onPick, render, suffix }) => {
+  const ref = useRef(null);
+  const scrolledRef = useRef(false);
+  // 只在首次有 value 时滚动到选中位置；之后用户点击切换不再强制滚回去
+  useEffect(() => {
+    if (!ref.current || value == null || scrolledRef.current) return;
+    const idx = items.indexOf(value);
+    if (idx >= 0) {
+      ref.current.scrollTop = idx * 36 - 80;
+      scrolledRef.current = true;
+    }
+  }, [value, items]);
+  return (
+    <div ref={ref} style={{
       flex: 1, height: 200, overflowY: 'auto',
       border: '1px solid rgba(212,168,90,0.2)',
       background: 'rgba(20,16,26,0.4)',
       scrollbarWidth: 'thin', scrollbarColor: 'rgba(212,168,90,0.3) transparent',
-    }}
-    ref={el => {
-      // auto-scroll selected item into view on first render
-      if (el && value != null) {
-        const idx = items.indexOf(value);
-        if (idx >= 0 && !el.dataset.scrolled) {
-          el.scrollTop = idx * 36 - 80;
-          el.dataset.scrolled = '1';
-        }
-      }
     }}>
       {items.map(it => (
         <div key={it}
@@ -331,17 +323,32 @@ const DatePicker = ({ year, month, day, onChange }) => {
       ))}
     </div>
   );
+};
+
+// 日期选择器：年月日三栏滚动
+const DatePicker = ({ year, month, day, onChange }) => {
+  const thisYear = new Date().getFullYear();
+  const years = useMemo(() => {
+    const arr = [];
+    for (let y = thisYear; y >= 1920; y--) arr.push(y);
+    return arr;
+  }, [thisYear]);
+  const months = useMemo(() => Array.from({ length: 12 }, (_, i) => i + 1), []);
+  const daysInMonth = (y, m) => new Date(y, m, 0).getDate();
+  const days = useMemo(() => year && month
+    ? Array.from({ length: daysInMonth(year, month) }, (_, i) => i + 1)
+    : Array.from({ length: 31 }, (_, i) => i + 1), [year, month]);
 
   return (
     <div>
       <div style={{ display: 'flex', gap: '0.5rem' }}>
         <div style={{ flex: 1 }}>
           <div className="ms-eyebrow" style={{ fontSize: '0.6rem', textAlign: 'center', marginBottom: '0.5rem' }}>年</div>
-          <Col items={years} value={year} onPick={y => onChange({ year: y, month, day })} />
+          <ScrollCol items={years} value={year} onPick={y => onChange({ year: y, month, day })} />
         </div>
         <div style={{ flex: 1 }}>
           <div className="ms-eyebrow" style={{ fontSize: '0.6rem', textAlign: 'center', marginBottom: '0.5rem' }}>月</div>
-          <Col items={months} value={month}
+          <ScrollCol items={months} value={month}
                onPick={m => {
                  // adjust day if needed
                  const md = year ? daysInMonth(year, m) : 31;
@@ -351,7 +358,7 @@ const DatePicker = ({ year, month, day, onChange }) => {
         </div>
         <div style={{ flex: 1 }}>
           <div className="ms-eyebrow" style={{ fontSize: '0.6rem', textAlign: 'center', marginBottom: '0.5rem' }}>日</div>
-          <Col items={days} value={day} onPick={d => onChange({ year, month, day: d })} suffix="" />
+          <ScrollCol items={days} value={day} onPick={d => onChange({ year, month, day: d })} suffix="" />
         </div>
       </div>
       <p style={{
@@ -605,6 +612,36 @@ const CityPicker = ({ city, onChange }) => {
 };
 
 // ──────────────────────────────────────────────────────────────────────────
+// CoverWrapper · 提到 CoverPage 外部，避免每次 React render 重新挂载触发动画闪烁
+// 使用 React.memo —— 只有 step / hideBg 真变化时才重渲染
+// ──────────────────────────────────────────────────────────────────────────
+const COVER_BG_GLYPHS = ['命','书','你','的','一','本','人','生','道'];
+const CoverWrapper = React.memo(function CoverWrapper({ step, hideBg, children }) {
+  return (
+    <div className="ms-page" style={{
+      minHeight: '100vh', display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center',
+      padding: '4rem 2rem', position: 'relative', zIndex: 5,
+    }}>
+      {!hideBg && (
+        <div style={{
+          position: 'absolute',
+          right: step % 2 === 0 ? '-2rem' : 'auto',
+          left: step % 2 === 0 ? 'auto' : '-3rem',
+          top: step % 2 === 0 ? '-2rem' : 'auto',
+          bottom: step % 2 === 0 ? 'auto' : '-4rem',
+          fontFamily: 'ZCOOL XiaoWei, serif',
+          fontSize: 'clamp(20rem, 38vw, 38rem)',
+          color: 'rgba(212,168,90,0.04)',
+          lineHeight: 1, pointerEvents: 'none', userSelect: 'none',
+        }}>{COVER_BG_GLYPHS[step] || '命'}</div>
+      )}
+      {children}
+    </div>
+  );
+});
+
+// ──────────────────────────────────────────────────────────────────────────
 // CoverPage · 多屏开场 + 引导式问答
 // ──────────────────────────────────────────────────────────────────────────
 const CoverPage = ({ profile, setProfile, onBegin }) => {
@@ -651,7 +688,7 @@ const CoverPage = ({ profile, setProfile, onBegin }) => {
       time: `${String(time.hour).padStart(2,'0')}:${String(time.minute || 0).padStart(2,'0')}`,
     };
     setProfile(profileData);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(profileData));
+    // 不写 localStorage —— 数据只在内存，关闭浏览器或刷新即清除
     onBegin();
   };
 
@@ -665,33 +702,12 @@ const CoverPage = ({ profile, setProfile, onBegin }) => {
     8: true,  // english name optional
   };
 
-  const Wrapper = ({ children, hideBg }) => (
-    <div className="ms-page" style={{
-      minHeight: '100vh', display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center',
-      padding: '4rem 2rem', position: 'relative', zIndex: 5,
-    }}>
-      {!hideBg && (
-        <div style={{
-          position: 'absolute',
-          right: step % 2 === 0 ? '-2rem' : 'auto',
-          left: step % 2 === 0 ? 'auto' : '-3rem',
-          top: step % 2 === 0 ? '-2rem' : 'auto',
-          bottom: step % 2 === 0 ? 'auto' : '-4rem',
-          fontFamily: 'ZCOOL XiaoWei, serif',
-          fontSize: 'clamp(20rem, 38vw, 38rem)',
-          color: 'rgba(212,168,90,0.04)',
-          lineHeight: 1, pointerEvents: 'none', userSelect: 'none',
-        }}>{['命','书','你','的','一','本','人','生','道'][step] || '命'}</div>
-      )}
-      {children}
-    </div>
-  );
+  // 注：使用外部的 CoverWrapper（React.memo 保护），不要在这里再嵌套定义
 
   // ═══ Step 0: Hook (钩子句, 自动 4s 后进入) ═══
   if (step === 0) {
     return (
-      <Wrapper>
+      <CoverWrapper step={step}>
         <div style={{ textAlign: 'center', maxWidth: 720, position: 'relative', zIndex: 1 }}>
           <p className="ms-eyebrow" style={{
             marginBottom: '3rem', opacity: 0,
@@ -724,14 +740,14 @@ const CoverPage = ({ profile, setProfile, onBegin }) => {
           from { opacity: 0; transform: translateY(20px); }
           to   { opacity: 1; transform: translateY(0); }
         }`}</style>
-      </Wrapper>
+      </CoverWrapper>
     );
   }
 
   // ═══ Step 1: 这是什么 ═══
   if (step === 1) {
     return (
-      <Wrapper>
+      <CoverWrapper step={step}>
         <div style={{ textAlign: 'center', maxWidth: 640, position: 'relative', zIndex: 1 }}>
           <p className="ms-eyebrow" style={{ marginBottom: '2rem' }}>WHAT IS THIS · 这是什么</p>
           <h1 className="ms-title-zh" style={{
@@ -758,7 +774,7 @@ const CoverPage = ({ profile, setProfile, onBegin }) => {
           </div>
           <button className="ms-btn" onClick={() => setStep(2)}>看看里面有什么 →</button>
         </div>
-      </Wrapper>
+      </CoverWrapper>
     );
   }
 
@@ -771,7 +787,7 @@ const CoverPage = ({ profile, setProfile, onBegin }) => {
       { num: 'V',   title: '印 鉴', sub: '多体系交叉 · 朱砂大印' },
     ];
     return (
-      <Wrapper>
+      <CoverWrapper step={step}>
         <div style={{ maxWidth: 800, position: 'relative', zIndex: 1, width: '100%' }}>
           <p className="ms-eyebrow" style={{ textAlign: 'center', marginBottom: '2rem' }}>
             INSIDE · 里 面 有 什 么
@@ -811,7 +827,7 @@ const CoverPage = ({ profile, setProfile, onBegin }) => {
               color: 'rgba(232,217,176,0.35)', fontSize: '0.7rem',
               letterSpacing: '0.2em', marginTop: '1.5rem', fontStyle: 'italic',
             }}>
-              约需 6 步 · 全程不到两分钟 · 数据只在你自己的浏览器里
+              约需 6 步 · 全程不到两分钟 · 数据不会被存下来，关闭页面即消失
             </p>
           </div>
         </div>
@@ -819,7 +835,7 @@ const CoverPage = ({ profile, setProfile, onBegin }) => {
           from { opacity: 0; transform: translateY(20px); }
           to   { opacity: 1; transform: translateY(0); }
         }`}</style>
-      </Wrapper>
+      </CoverWrapper>
     );
   }
 
@@ -905,7 +921,7 @@ const CoverPage = ({ profile, setProfile, onBegin }) => {
   if (step >= 3 && step <= 8) {
     const q = renderQ();
     return (
-      <Wrapper>
+      <CoverWrapper step={step}>
         <div style={{
           maxWidth: 580, width: '100%', position: 'relative', zIndex: 1,
         }}>
@@ -977,16 +993,16 @@ const CoverPage = ({ profile, setProfile, onBegin }) => {
             color: 'rgba(232,217,176,0.3)', fontSize: '0.7rem',
             letterSpacing: '0.2em', fontStyle: 'italic',
           }}>
-            🔒 仅在你的浏览器里 · 不上传 · 不收费 · 不强制注册
+            🔒 不存留任何数据 · 关闭页面即消失 · 不上传 · 不收费 · 不注册
           </p>
         </div>
-      </Wrapper>
+      </CoverWrapper>
     );
   }
 
   // ═══ Step 9: Ready · 展卷 ═══
   return (
-    <Wrapper>
+    <CoverWrapper step={step}>
       <div style={{ textAlign: 'center', maxWidth: 580, position: 'relative', zIndex: 1 }}>
         <p className="ms-eyebrow" style={{ marginBottom: '2rem' }}>READY · 准 备 就 绪</p>
         <h2 className="ms-title-zh" style={{
@@ -1032,7 +1048,7 @@ const CoverPage = ({ profile, setProfile, onBegin }) => {
           ← 重新题写
         </button>
       </div>
-    </Wrapper>
+    </CoverWrapper>
   );
 };
 
@@ -1727,16 +1743,11 @@ export default function App() {
   const [activePage, setActivePage] = useState('cover');
   const [coverDone, setCoverDone] = useState(false);
 
+  // 不读 localStorage —— 每次打开都从头开始，保护隐私
+  // 旧版本可能写过的数据，这里一次性清掉
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const p = JSON.parse(raw);
-        setProfile(p);
-        setCoverDone(true);
-        setActivePage('bazi');
-      }
-    } catch (e) {}
+    try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+    try { localStorage.removeItem('mingshu-profile'); } catch (e) {}
   }, []);
 
   const computed = useMemo(() => {
@@ -1770,11 +1781,11 @@ export default function App() {
   })), []);
 
   const handleReset = () => {
-    if (confirm('清除你的命书？所有数据将消失，需重新题写。')) {
-      localStorage.removeItem(STORAGE_KEY);
+    if (confirm('清除你的命书？所有数据立刻消失。')) {
       setProfile(null);
       setCoverDone(false);
       setActivePage('cover');
+      try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
     }
   };
 
