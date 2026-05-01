@@ -1,0 +1,28 @@
+{
+  "name": "mingshu",
+  "version": "0.1.0",
+  "description": "命书 · 一本根据你的生辰生成的、可翻阅的、电影级的、专属于你的书",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": ["mingshu", "命书", "命理", "八字", "占星"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "astronomy-engine": "^2.1.19",
+    "lunar-javascript": "^1.7.7",
+    "lucide-react": "^0.555.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.1.1",
+    "autoprefixer": "^10.4.22",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.14",
+    "vite": "^7.2.4"
+  }
+}
